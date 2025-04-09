@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
+import numpy as np
 
 st.set_page_config(layout="wide")
 st.title("IPEDS Trait-Based College Explorer")
@@ -26,17 +27,19 @@ selected_vars = []  # Keep track of variables selected for filtering and scoring
 # Numeric filters
 st.markdown("### Numeric Filters")
 for col in numeric_cols:
-    col_min = int(df[col].min(skipna=True))
-    col_max = int(df[col].max(skipna=True))
-
-    if col_min != col_max:
-        use_col = st.checkbox(f"Filter by {col} (numeric)")
-        if use_col:
-            selected_vars.append(col)
-            range_vals = st.slider(f"{col} range:", col_min, col_max, (col_min, col_max))
-            filtered_df = filtered_df[
-                filtered_df[col].between(range_vals[0], range_vals[1])
-            ]
+    try:
+        col_min = int(np.nanmin(df[col]))
+        col_max = int(np.nanmax(df[col]))
+        if col_min != col_max:
+            use_col = st.checkbox(f"Filter by {col} (numeric)")
+            if use_col:
+                selected_vars.append(col)
+                range_vals = st.slider(f"{col} range:", col_min, col_max, (col_min, col_max))
+                filtered_df = filtered_df[
+                    filtered_df[col].between(range_vals[0], range_vals[1])
+                ]
+    except Exception as e:
+        st.warning(f"Skipping column {col} due to error: {e}")
 
 # Categorical filters
 st.markdown("### Categorical Filters")
