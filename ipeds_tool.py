@@ -80,6 +80,7 @@ if weights:
     ranked = filtered_df.sort_values("Composite Score", ascending=False)
 
     display_cols = ['institution name'] if 'institution name' in df.columns else []
+    st.write("### Ranked List of Institutions")
     st.dataframe(ranked[display_cols + ['Composite Score'] + selected_vars].reset_index(drop=True))
 
     st.download_button(
@@ -88,4 +89,3 @@ if weights:
         file_name='filtered_ipeds_results.csv',
         mime='text/csv'
     )
-
