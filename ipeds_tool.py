@@ -4,74 +4,62 @@ from sklearn.preprocessing import MinMaxScaler
 import numpy as np
 
 st.set_page_config(layout="wide")
-st.title("IPEDS Custom Ranking Builder")
+st.title("College Ranking Builder (IPEDS)")
 
-DEFAULT_DATA_PATH = "data/ipeds_data.csv"
+DEFAULT_DATA_PATH = "data/ipeds_data1.csv"
 
 uploaded_file = st.file_uploader("Upload your IPEDS CSV file", type="csv")
 if uploaded_file:
     df = pd.read_csv(uploaded_file)
 else:
-    st.info("Using default IPEDS dataset.")
     df = pd.read_csv(DEFAULT_DATA_PATH)
 
-st.subheader("Step 1: Define Your Ranking Criteria")
+st.markdown("### Step 1: Select and Weight Ranking Variables")
 
-# Define your variables with metadata
-VARIABLES = [
-    {"label": "4-year Graduation rate", "col": "4-year Graduation rate", "direction": "high"},
-    {"label": "6-year Graduation rate", "col": "6-year Graduation rate", "direction": "high"},
-    {"label": "8-year Graduation rate", "col": "8-year Graduation rate - bachelor's degree within 200% of normal time", "direction": "high"},
-    {"label": "SAT EBRW 75th percentile", "col": "SAT Evidence-Based Reading and Writing 75th percentile score", "direction": "high"},
-    {"label": "SAT Math 75th percentile", "col": "SAT Math 75th percentile score", "direction": "high"},
-    {"label": "ACT Composite 75th percentile", "col": "ACT Composite 75th percentile score", "direction": "high"},
-    {"label": "Percent Pell Grant Recipients", "col": "Percent of undergraduate students awarded Federal Pell grants", "direction": "high"},
-    {"label": "Average Net Price", "col": "Average net price-students awarded grant or scholarship aid, 2022-23", "direction": "low"},
-    {"label": "Total Price (in-state, off campus)", "col": "Total price for in-state students living off campus (not with family)  2023-24", "direction": "low"},
-    {"label": "Percent Admitted", "col": "Percent admitted - total", "direction": "low"},
-    {"label": "Transfer-in %", "col": "Transfer-in Percentage", "direction": "high"},
-    {"label": "25+ Enrollment %", "col": "25+ Percentage", "direction": "high"},
-    {"label": "Part-time Undergraduate Enrollment", "col": "Part-time undergraduate enrollment", "direction": "high"},
-    {"label": "Undergraduate Enrollment", "col": "Undergraduate enrollment", "direction": "high"},
-    {"label": "SAT Aggregate", "col": "SAT Aggregate", "direction": "high"},
-]
+numeric_cols = df.select_dtypes(include='number').columns.tolist()
+categorical_cols = df.select_dtypes(include='object').columns.tolist()
 
-# Select variables to include in the score
-selected_variables = st.multiselect("Select variables to include in your ranking:", options=[v["label"] for v in VARIABLES])
+selected_vars = st.multiselect("Choose numeric variables to include in the ranking:", options=numeric_cols)
 
-# Assign weight and direction for each selected variable
-weight_config = {}
-for var in VARIABLES:
-    if var["label"] in selected_variables:
-        st.markdown(f"**{var['label']}**")
-        weight = st.slider(f"Weight for {var['label']}", 0.0, 1.0, 0.1, 0.05)
-        direction = st.selectbox(f"Preferred direction for {var['label']}", ["high", "low"], index=0 if var["direction"] == "high" else 1)
-        weight_config[var["col"]] = {"weight": weight, "direction": direction}
+score_config = {}
+for var in selected_vars:
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        direction = st.radio(f"{var} — Higher or Lower is Better?", ["High is better", "Low is better"], key=f"dir_{var}")
+    with col2:
+        weight = st.slider("Weight", 0.0, 1.0, 0.1, 0.05, key=f"weight_{var}")
+    score_config[var] = {"weight": weight, "direction": "high" if "High" in direction else "low"}
 
-# Normalize, score, and rank
-if weight_config:
-    st.subheader("Ranked Institutions")
-    filtered_df = df.copy()
-    score_df = pd.DataFrame(index=filtered_df.index)
+st.markdown("### Step 2: (Optional) Filter Institutions")
 
-    for col, config in weight_config.items():
-        if col in filtered_df.columns:
-            values = filtered_df[col].fillna(0)
-            scaled = MinMaxScaler().fit_transform(values.values.reshape(-1, 1)).flatten()
-            if config["direction"] == "low":
-                scaled = 1 - scaled
-            score_df[col] = scaled * config["weight"]
+filtered_df = df.copy()
 
-    filtered_df['Composite Score'] = score_df.sum(axis=1)
+for col in selected_vars:
+    col_min, col_max = int(df[col].min(skipna=True)), int(df[col].max(skipna=True))
+    if col_min != col_max:
+        selected_range = st.slider(f"{col} range:", col_min, col_max, (col_min, col_max), key=f"filter_{col}")
+        filtered_df = filtered_df[filtered_df[col].between(selected_range[0], selected_range[1])]
+
+st.markdown("### Step 3: View Rankings")
+
+if score_config:
+    norm_df = pd.DataFrame(index=filtered_df.index)
+    for var, config in score_config.items():
+        values = filtered_df[var].fillna(0)
+        scaled = MinMaxScaler().fit_transform(values.values.reshape(-1, 1)).flatten()
+        if config["direction"] == "low":
+            scaled = 1 - scaled
+        norm_df[var] = scaled * config["weight"]
+
+    filtered_df['Composite Score'] = norm_df.sum(axis=1)
     ranked_df = filtered_df.sort_values("Composite Score", ascending=False)
 
-    display_cols = ['institution name', 'Composite Score'] + list(weight_config.keys())
+    display_cols = ['institution name', 'Composite Score'] + selected_vars
     st.dataframe(ranked_df[display_cols].reset_index(drop=True))
 
     st.download_button(
-        label="Download Ranked Results as CSV",
+        label="📥 Download Results",
         data=ranked_df[display_cols].to_csv(index=False).encode('utf-8'),
         file_name='ranked_ipeds_results.csv',
         mime='text/csv'
     )
-
