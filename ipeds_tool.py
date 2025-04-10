@@ -12,7 +12,11 @@ uploaded_file = st.file_uploader("Upload your IPEDS CSV file", type="csv")
 if uploaded_file:
     df = pd.read_csv(uploaded_file)
 else:
-    df = pd.read_csv(DEFAULT_DATA_PATH)
+    try:
+        df = pd.read_csv(DEFAULT_DATA_PATH)
+    except FileNotFoundError:
+        st.error("Default file not found. Please upload a valid IPEDS CSV file to begin.")
+        st.stop()
 
 st.markdown("### Step 1: Select and Weight Ranking Variables")
 
