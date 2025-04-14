@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 
 # Load data
-df = pd.read_csv("traits via ipeds.csv")
+df = pd.read_csv("traits_via_ipeds.csv")
 
 st.title("University Trait Explorer for Employers")
 
