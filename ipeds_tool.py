@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 
 # Load data
-df = pd.read_csv("Data_4-14-2025---682.csv")
+df = pd.read_csv("traits via ipeds.csv")
 
 st.title("University Trait Explorer for Employers")
 
@@ -61,7 +61,7 @@ else:
 
 # Show results
 results = valid_df.sort_values("Final Score", ascending=False)[
-    ["Institution Name", "State abbreviation (HD2023)", "Grand total (All students  Undergraduate total) EF2023", "Final Score"] + traits + (["Contextual Friction Score"] if use_contextual_friction else [])
+    ["Institution Name", "State", "Grand total (All students  Undergraduate total) EF2023", "Final Score"] + traits + (["Contextual Friction Score"] if use_contextual_friction else [])
 ]
 
 st.dataframe(results.reset_index(drop=True), use_container_width=True)
