@@ -1,50 +1,92 @@
 import streamlit as st
 import pandas as pd
 
-# Load your data
-df = pd.read_csv("Book3.csv")
-df.columns = df.columns.str.strip()  # Strip extra whitespace
+# Load your cleaned dataset
+@st.cache_data
+def load_data():
+    df = pd.read_csv("Book3.csv")
+    return df
 
-# Let user select traits and weights
+df = load_data()
+
+# Define the traits available
 traits = [
-    "Conscientiousness", "Resilience/Grit", "Adaptability", "Self-Direction",
-    "Cognitive Readiness (Contextual)", "Growth Mindset", "Written Component",
-    "Navigational Component (Behavior)", "Communication (Contextual)", "Quantitative Reasoning"
+    "Contextual Friction Score",
+    "Conscientiousness",
+    "Resilience/Grit",
+    "Adaptability",
+    "Self-Direction",
+    "Cognitive Readiness (Raw)",
+    "Growth Mindset",
+    "Written Component",
+    "Navigational Component (Behavior)",
+    "Communication (Raw)",
+    "Cognitive Readiness (Contextual)",
+    "Communication (Contextual)",
+    "Quantitative Reasoning"
 ]
 
-st.sidebar.title("Trait Weighting")
-selected_traits = {}
+# Clean the data: convert all traits to numeric, coercing errors to NaN
+df_clean = df.copy()
 for trait in traits:
-    use_trait = st.sidebar.checkbox(f"Include {trait}?", value=False)
-    if use_trait:
+    if trait in df_clean.columns:
+        df_clean[trait] = pd.to_numeric(df_clean[trait], errors="coerce")
+
+# Sidebar: trait weight sliders and context inclusion toggles
+st.sidebar.header("Trait Preferences")
+
+use_contextual_friction = st.sidebar.checkbox("Apply Contextual Friction", value=True)
+use_contextual_cognitive = st.sidebar.checkbox("Use Contextual Cognitive Readiness", value=True)
+use_contextual_communication = st.sidebar.checkbox("Use Contextual Communication", value=True)
+
+selected_traits = {}
+
+for trait in traits:
+    if trait.startswith("Cognitive Readiness"):
+        if (use_contextual_cognitive and "Contextual" not in trait) or (not use_contextual_cognitive and "Contextual" in trait):
+            continue
+    if trait.startswith("Communication"):
+        if (use_contextual_communication and "Contextual" not in trait) or (not use_contextual_communication and "Contextual" in trait):
+            continue
+    if trait == "Contextual Friction Score" and not use_contextual_friction:
+        continue
+
+    include = st.sidebar.checkbox(f"Include {trait}?", value=False)
+    if include:
         weight = st.sidebar.slider(f"Weight for {trait}", 0.0, 1.0, 0.1, 0.05)
         selected_traits[trait] = weight
 
-# Normalize weights to sum to 1 if needed
-total_weight = sum(selected_traits.values())
-if total_weight == 0:
-    st.warning("Please select and assign weights to at least one trait.")
+if not selected_traits:
+    st.warning("Please select at least one trait to score institutions.")
     st.stop()
 
-# Filter valid rows and calculate score
-valid_df = df.copy()
-score_column = []
+# Normalize weights
+total_weight = sum(selected_traits.values())
+selected_traits = {k: v / total_weight for k, v in selected_traits.items()}
 
-for index, row in valid_df.iterrows():
-    score = 0
-    valid = True
-    for trait, weight in selected_traits.items():
-        if trait in valid_df.columns and pd.notnull(row[trait]) and isinstance(row[trait], (int, float)):
-            score += weight * row[trait]
-        else:
-            valid = False
-            break
-    score_column.append(score if valid else None)
+# Calculate match scores
+scores = []
 
-valid_df["Match Score"] = score_column
-valid_df = valid_df.dropna(subset=["Match Score"]).sort_values("Match Score", ascending=False)
+for idx, row in df_clean.iterrows():
+    if all(pd.notna(row[trait]) for trait in selected_traits):
+        score = sum(row[trait] * weight for trait, weight in selected_traits.items())
+        scores.append(score)
+    else:
+        scores.append(None)
 
-# Show results
-st.title("Top Matching Institutions")
-st.dataframe(valid_df[["Institution Name", "State abbreviation (HD2023)", "Grand total (All students  Undergraduate total) EF2023", "Match Score"] + list(selected_traits.keys())])
+# Add match scores to DataFrame
+df_clean["Match Score"] = scores
 
+# Filter valid scores
+df_results = df_clean.dropna(subset=["Match Score"]).copy()
+df_results = df_results.sort_values("Match Score", ascending=False)
+
+# Display results
+st.title("Credential Trait Matcher")
+st.markdown("### Results Based on Your Preferences")
+st.dataframe(df_results[[
+    "Institution Name", 
+    "State abbreviation (HD2023)", 
+    "Grand total (All students  Undergraduate total) EF2023",
+    "Match Score"
+] + list(selected_traits.keys())])
