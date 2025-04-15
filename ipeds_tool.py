@@ -5,102 +5,88 @@ import pandas as pd
 @st.cache_data
 def load_data():
     df = pd.read_csv("data/credential_traits.csv")
+    df.replace("Unavailable", pd.NA, inplace=True)
     return df
 
-df = load_data()
-
-# Title
-st.title("Institution Trait Filter Tool")
-
-# Trait inputs
-st.markdown("### Select Traits and Assign Weights")
-trait_columns = [
-    "Conscientiousness", "Resilience/Grit", "Adaptability", "Self Direction",
-    "Growth Mindset", "Cognitive Readiness", "Communication", "Quantitative Reasoning"
-]
-
-weights = {}
-for trait in trait_columns:
-    weight = st.slider(f"{trait} Weight", min_value=0.0, max_value=1.0, step=0.1, value=0.0)
-    if weight > 0:
-        weights[trait] = weight
-
-# Normalize weights
-if weights:
-    total_weight = sum(weights.values())
-    weights = {trait: w / total_weight for trait, w in weights.items()}
-
-# Column toggles
-st.markdown("### Display Options")
-col1, col2, col3 = st.columns(3)
-with col1:
-    show_score = st.checkbox("Show Score", value=False)
-with col2:
-    show_notes = st.checkbox("Show Missing Traits", value=False)
-with col3:
-    show_state = st.checkbox("Show State", value=False)
-
-# State filter
-selected_state = st.selectbox("Filter by State", ["All"] + sorted(df['State abbreviation (HD2023)'].dropna().unique()))
-if selected_state != "All":
-    df = df[df['State abbreviation (HD2023)'] == selected_state]
-
-# Score institutions
-def score_institutions(df, weights):
+def score_institutions(df, weights, include_partial):
     scores = []
     notes = []
-    for idx, row in df.iterrows():
-        score = 0
+    for _, row in df.iterrows():
+        total_score = 0
         total_weight = 0
-        missing_traits = []
+        missing = []
         for trait, weight in weights.items():
-            value = row.get(trait)
-            if isinstance(value, (int, float)):
-                score += value * weight
+            try:
+                val = float(row[trait])
+                total_score += val * weight
                 total_weight += weight
-            else:
-                missing_traits.append(trait)
-        if total_weight > 0:
-            final_score = round(score / total_weight, 1)
-        else:
-            final_score = None
-        scores.append(final_score)
-        notes.append(", ".join(missing_traits) if missing_traits else "")
+            except:
+                missing.append(trait)
+        if total_weight == 0 or (missing and not include_partial):
+            continue
+        score = total_score / total_weight
+        scores.append(score)
+        notes.append(", ".join(missing))
+    df = df.loc[df.index[:len(scores)]].copy()
     df["Score"] = scores
     df["Missing Traits"] = notes
     return df
 
+df = load_data()
+
+st.title("Credential Trait Explorer")
+
+# Trait selection (Sidebar)
+st.sidebar.header("Select Trait Weightings")
+traits = [
+    "Conscientiousness", "Resilience/Grit", "Adaptability", "Self Direction",
+    "Growth Mindset", "Cognitive Readiness", "Communication", "Quantitative Reasoning"
+]
+weights = {}
+for trait in traits:
+    weight = st.sidebar.slider(f"{trait}", 0.0, 1.0, 0.0, 0.05)
+    if weight > 0:
+        weights[trait] = weight
+
+include_partial = st.sidebar.checkbox("Include partial results", value=True)
+
+# Display options (Main page)
+st.subheader("Display Options")
+show_score = st.checkbox("Show Score", value=False)
+show_state = st.checkbox("Show State", value=False)
+show_notes = st.checkbox("Show Notes", value=False)
+
+# Filter by state
+state_filter = st.selectbox("Filter by State", ["All"] + sorted(df['State abbreviation (HD2023)'].dropna().unique()))
+
 if weights:
-    df_scored = score_institutions(df.copy(), weights)
-    df_scored = df_scored[df_scored["Score"].notna()]
+    df_scored = score_institutions(df, weights, include_partial)
 
-    # Determine if we need to split by control
-    public_df = df_scored[df_scored["Control of institution (HD2023)"] == 1]
-    private_df = df_scored[df_scored["Control of institution (HD2023)"].isin([2, 3])]
-    show_split = len(public_df) >= 7 and len(private_df) >= 7
+    if state_filter != "All":
+        df_scored = df_scored[df_scored["State abbreviation (HD2023)"] == state_filter]
 
+    df_scored["Control Type"] = df_scored["Control of institution (HD2023)"].map({1: "Public", 2: "Private", 3: "Private"})
+
+    # Determine display columns
     columns = ["Institution Name"]
-    if show_score:
-        columns.append("Score")
-    if show_notes:
-        columns.append("Missing Traits")
-    if show_state:
-        columns.append("State abbreviation (HD2023)")
+    if show_score: columns.append("Score")
+    if show_notes: columns.append("Missing Traits")
+    if show_state: columns.append("State abbreviation (HD2023)")
 
-    if show_split:
-        st.subheader("Public Institutions")
-        public_display = public_df[columns].sort_values(by="Score", ascending=False, na_position='last')
-        st.dataframe(public_display)
+    public_df = df_scored[df_scored["Control Type"] == "Public"]
+    private_df = df_scored[df_scored["Control Type"] == "Private"]
 
-        st.subheader("Private Institutions")
-        private_display = private_df[columns].sort_values(by="Score", ascending=False, na_position='last')
-        st.dataframe(private_display)
+    if len(public_df) >= 7 and len(private_df) >= 7:
+        st.markdown("### Public Institutions")
+        st.dataframe(public_df[columns].sort_values(by="Score" if "Score" in columns else "Institution Name", ascending=False))
 
+        st.markdown("### Private Institutions")
+        st.dataframe(private_df[columns].sort_values(by="Score" if "Score" in columns else "Institution Name", ascending=False))
     else:
-        st.subheader("Combined Results")
-        combined_display = df_scored[columns].sort_values(by="Score", ascending=False, na_position='last')
+        st.markdown("### All Institutions")
+        combined_display = df_scored[columns].sort_values(by="Score" if "Score" in columns else "Institution Name", ascending=False)
         st.dataframe(combined_display)
-
 else:
-    st.info("Please select at least one trait with a weight greater than 0 to begin filtering.")
+    st.warning("Please assign weight to at least one trait in the sidebar to see results.")
+
 
