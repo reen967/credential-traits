@@ -3,8 +3,7 @@ import pandas as pd
 import plotly.graph_objects as go
 
 def load_data():
-    pd.read_csv("data/credential_traits.csv")
-
+    df = pd.read_csv("data/credential_traits.csv")
     return df
 
 def filter_by_state(df, state):
