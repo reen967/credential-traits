@@ -46,6 +46,6 @@ All institutional data is drawn from the Integrated Postsecondary Education Data
 Also thanks to ChatGPT for helping me think through this, including fixing formulas, writing the bulk of the code, and pointing out improvements in the accompanying essay.
 
 ## A Note
-This is not a ranking system. It’s a way of looking differently, and hopefully, more generously, at what credentials might tell us, and what they often don’t.
+This is not a ranking system. It’s a way of looking differently, and hopefully more generously, at what credentials might tell us, and what they often don’t.
 
 Thanks for exploring. If you’re curious about how this was built or want to contribute ideas, I'd love to chat. You can reach me here: arina.berezovsky@gmail.com :)
