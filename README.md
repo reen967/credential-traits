@@ -22,21 +22,21 @@ We tend to default to prestige, GPA, or school name when evaluating someone’s 
 ### How the Traits Are Inferred
 All trait scores reflect the estimated percentage of graduates from that institution likely to have demonstrated that trait based on the environment they navigated. Here’s how each is calculated (simplified):
 
-Conscientiousness: Based on structured graduation timelines. Includes Pell and non-Pell completion rates across 4, 6, and 8 years.
+**Conscientiousness:** Based on structured graduation timelines. Includes Pell and non-Pell completion rates across 4, 6, and 8 years.
 
-Resilience/Grit: Highlights students who likely faced more barriers. Looks at delayed completion (especially for Pell students), transfer-in rates, older students, and GI Bill usage—students who persisted despite a nontraditional path.
+**Resilience/Grit:** Highlights students who likely faced more barriers. Looks at delayed completion (especially for Pell students), transfer-in rates, older students, and GI Bill usage—students who persisted despite a nontraditional path.
 
-Adaptability: Captures students navigating multiple formats and transitions. Includes hybrid and online learning, older students, GI Bill, and transfer enrollment.
+**Adaptability:** Captures students navigating multiple formats and transitions. Includes hybrid and online learning, older students, GI Bill, and transfer enrollment.
 
-Self-Direction: Indicates agency in navigating one’s education. Combines longer time to completion, part-time/older enrollment, and intentional hybrid participation.
+**Self-Direction:** Indicates agency in navigating one’s education. Combines longer time to completion, part-time/older enrollment, and intentional hybrid participation.
 
-Growth Mindset: Reflects improvement and evolution over time. Measures growth across multi-year completion windows and includes hybrid learners.
+**Growth Mindset:** Reflects improvement and evolution over time. Measures growth across multi-year completion windows and includes hybrid learners.
 
-Cognitive Readiness: Based on standardized test scores adjusted for Pell enrollment—acknowledging that raw scores can reflect opportunity more than ability.
+**Cognitive Readiness:** Based on standardized test scores adjusted for Pell enrollment—acknowledging that raw scores can reflect opportunity more than ability.
 
-Communication: Includes English test scores, on-time graduation, and the presence of international students (as a proxy for navigating diverse communication demands).
+**Communication:** Includes English test scores, on-time graduation, and the presence of international students (as a proxy for navigating diverse communication demands).
 
-Quantitative Reasoning: Based on math test scores, adjusted by Pell enrollment.
+**Quantitative Reasoning:** Based on math test scores, adjusted by Pell enrollment.
 
 All calculations are available in the code and documented in plain English formulas.
 
