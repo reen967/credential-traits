@@ -1,92 +1,101 @@
 import streamlit as st
 import pandas as pd
+import plotly.graph_objects as go
 
-# Load data
+# Load the data
 @st.cache_data
 def load_data():
     df = pd.read_csv("data/credential_traits.csv")
-    df.replace("Unavailable", pd.NA, inplace=True)
-    return df
-
-def score_institutions(df, weights, include_partial):
-    scores = []
-    notes = []
-    for _, row in df.iterrows():
-        total_score = 0
-        total_weight = 0
-        missing = []
-        for trait, weight in weights.items():
-            try:
-                val = float(row[trait])
-                total_score += val * weight
-                total_weight += weight
-            except:
-                missing.append(trait)
-        if total_weight == 0 or (missing and not include_partial):
-            continue
-        score = total_score / total_weight
-        scores.append(score)
-        notes.append(", ".join(missing))
-    df = df.loc[df.index[:len(scores)]].copy()
-    df["Score"] = scores
-    df["Missing Traits"] = notes
+    df.replace("Unavailable", pd.NA, inplace=True)  # Clean non-numeric entries
     return df
 
 df = load_data()
 
-st.title("Credential Trait Explorer")
-
-# Trait selection (Sidebar)
-st.sidebar.header("Select Trait Weightings")
-traits = [
+# Trait columns
+trait_columns = [
     "Conscientiousness", "Resilience/Grit", "Adaptability", "Self Direction",
     "Growth Mindset", "Cognitive Readiness", "Communication", "Quantitative Reasoning"
 ]
+
+# Sidebar UI
+st.sidebar.header("Select Trait Weights")
 weights = {}
-for trait in traits:
-    weight = st.sidebar.slider(f"{trait}", 0.0, 1.0, 0.0, 0.05)
-    if weight > 0:
-        weights[trait] = weight
+for trait in trait_columns:
+    weights[trait] = st.sidebar.slider(trait, 0.0, 1.0, 0.0, 0.1)
 
-include_partial = st.sidebar.checkbox("Include partial results", value=True)
+# Filter by State
+state_filter = st.sidebar.selectbox("Filter by State", ["All"] + sorted(df['State abbreviation (HD2023)'].dropna().unique()))
+if state_filter != "All":
+    df = df[df['State abbreviation (HD2023)'] == state_filter]
 
-# Display options (Main page)
-st.subheader("Display Options")
-show_score = st.checkbox("Show Score", value=False)
-show_state = st.checkbox("Show State", value=False)
-show_notes = st.checkbox("Show Notes", value=False)
+# Function to calculate score and missing traits
+def score_institutions(df, weights):
+    results = []
+    for _, row in df.iterrows():
+        available_traits = []
+        missing_traits = []
+        score = 0.0
+        total_weight = 0.0
 
-# Filter by state
-state_filter = st.selectbox("Filter by State", ["All"] + sorted(df['State abbreviation (HD2023)'].dropna().unique()))
+        for trait, weight in weights.items():
+            val = row.get(trait)
+            if pd.notna(val):
+                available_traits.append(trait)
+                score += float(val) * weight
+                total_weight += weight
+            else:
+                if weight > 0:
+                    missing_traits.append(trait)
 
-if weights:
-    df_scored = score_institutions(df, weights, include_partial)
+        if total_weight > 0:
+            normalized_score = round(score / total_weight, 1)
+        else:
+            normalized_score = "Unavailable"
 
-    if state_filter != "All":
-        df_scored = df_scored[df_scored["State abbreviation (HD2023)"] == state_filter]
+        notes = "Partial data" if missing_traits else "All traits used"
+        if missing_traits:
+            notes += f" (Missing: {', '.join(missing_traits)})"
 
-    df_scored["Control Type"] = df_scored["Control of institution (HD2023)"].map({1: "Public", 2: "Private", 3: "Private"})
+        results.append({
+            "Institution Name": row["Institution Name"],
+            "State": row["State abbreviation (HD2023)"],
+            "Control": row["Control of institution (HD2023)"],
+            "Score": normalized_score,
+            "Notes": notes
+        })
+    return pd.DataFrame(results)
 
-    # Determine display columns
-    columns = ["Institution Name"]
-    if show_score: columns.append("Score")
-    if show_notes: columns.append("Missing Traits")
-    if show_state: columns.append("State abbreviation (HD2023)")
+# Score and sort
+scored_df = score_institutions(df, weights)
+scored_df = scored_df[scored_df["Score"] != "Unavailable"]
+scored_df = scored_df.sort_values(by="Score", ascending=False)
 
-    public_df = df_scored[df_scored["Control Type"] == "Public"]
-    private_df = df_scored[df_scored["Control Type"] == "Private"]
+# Split by control
+public = scored_df[scored_df["Control"] == 1]
+private = scored_df[scored_df["Control"].isin([2, 3])]
 
-    if len(public_df) >= 7 and len(private_df) >= 7:
-        st.markdown("### Public Institutions")
-        st.dataframe(public_df[columns].sort_values(by="Score" if "Score" in columns else "Institution Name", ascending=False))
+# Display results
+st.title("Credential Traits by Institution")
+st.markdown("Use the sidebar to adjust trait weightings and filter results.")
 
-        st.markdown("### Private Institutions")
-        st.dataframe(private_df[columns].sort_values(by="Score" if "Score" in columns else "Institution Name", ascending=False))
-    else:
-        st.markdown("### All Institutions")
-        combined_display = df_scored[columns].sort_values(by="Score" if "Score" in columns else "Institution Name", ascending=False)
-        st.dataframe(combined_display)
-else:
-    st.warning("Please assign weight to at least one trait in the sidebar to see results.")
+if len(public) >= 7:
+    st.subheader("Top Public Institutions")
+    st.dataframe(public[["Institution Name", "State", "Score", "Notes"]])
+
+if len(private) >= 7:
+    st.subheader("Top Private Institutions")
+    st.dataframe(private[["Institution Name", "State", "Score", "Notes"]])
+
+if len(public) < 7 and len(private) < 7:
+    st.subheader("Top Institutions")
+    st.dataframe(scored_df[["Institution Name", "State", "Score", "Notes"]])
+
+# Optional: Download button
+st.download_button(
+    label="Download Results as CSV",
+    data=scored_df.to_csv(index=False).encode('utf-8'),
+    file_name='trait_scores.csv',
+    mime='text/csv'
+)
 
 
