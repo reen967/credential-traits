@@ -95,8 +95,16 @@ if len(df_scored) >= 7:
 
 
         st.subheader("Private Institutions")
-        st.dataframe(private_df[[c for c in ["Institution Name"] + (["Score"] if show_score else []) + (["Missing Traits"] if show_notes else []) + (["State"] if show_state else [])] if c in private_df.columns]].sort_values(by="Score", ascending=False, na_position='last'))
-    else:
+        st.dataframe(
+    private_df[
+        [c for c in ["Institution Name"] +
+         (["Score"] if show_score else []) +
+         (["Missing Traits"] if show_notes else []) +
+         (["State"] if show_state else [])
+         if c in private_df.columns]
+    ].sort_values(by="Score", ascending=False, na_position='last')
+)
+
         st.subheader("All Institutions")
         st.dataframe(df_scored[[c for c in ["Institution Name"] + (["Score"] if show_score else []) + (["Missing Traits"] if show_notes else []) + (["State"] if show_state else [])] if c in df_scored.columns]].sort_values(by="Score", ascending=False, na_position='last'))
 else:
