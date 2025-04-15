@@ -1,70 +1,101 @@
 import streamlit as st
 import pandas as pd
+import plotly.graph_objects as go
 
-# Load your data (replace with actual file path or upload method)
-@st.cache_data
 def load_data():
-    return pd.read_csv("credential_traits.csv")  # Make sure this CSV has the columns listed below
+    df = pd.read_csv("credential_traits.csv")
+    return df
 
-df = load_data()
+def filter_by_state(df, state):
+    if state != "All":
+        return df[df['State abbreviation (HD2023)'] == state]
+    return df
 
-# Define trait columns
-trait_columns = [
-    "Conscientiousness", "Resilience/Grit", "Adaptability", "Self Direction",
-    "Growth Mindset", "Cognitive Readiness", "Communication", "Quantitative Reasoning"
-]
+def score_institutions(df, weights):
+    score = sum(df[trait] * weight for trait, weight in weights.items())
+    df = df.copy()
+    df["Score"] = score
+    df = df.dropna(subset=["Score"])
+    return df.sort_values("Score", ascending=False)
 
-st.title("College Trait Explorer")
-
-# Trait selection and weightings
-st.header("Step 1: Choose Traits and Weightings")
-selected_traits = st.multiselect("Select traits important to you", trait_columns)
-
-weights = {
-    trait: st.slider(f"Weight for {trait}", 0.0, 1.0, 0.2, 0.05)
-    for trait in selected_traits
-}
-
-# State filter
-st.header("Step 2: Filter by State")
-states = sorted(df["State abbreviation (HD2023)"].dropna().unique())
-selected_states = st.multiselect("Select states", states, default=states)
-
-# Apply state filter
-filtered_df = df[df["State abbreviation (HD2023)"].isin(selected_states)].copy()
-
-# Drop rows with any non-numeric or missing data in selected traits
-for trait in selected_traits:
-    filtered_df = filtered_df[pd.to_numeric(filtered_df[trait], errors='coerce').notnull()]
-
-# Compute overall weighted score
-filtered_df["Score"] = filtered_df[selected_traits].apply(
-    lambda row: sum(row[trait] * weights[trait] for trait in selected_traits), axis=1
-)
-
-# Split by institution control type
-public_df = filtered_df[filtered_df["Control of institution (HD2023)"] == 1]
-private_df = filtered_df[filtered_df["Control of institution (HD2023)"].isin([2, 3])]
-
-# Display public institutions if 7 or more
-if len(public_df) >= 7:
-    st.subheader("Public Institutions")
-    st.dataframe(
-        public_df.sort_values(by="Score", ascending=False)[
-            ["Institution Name", "State abbreviation (HD2023)", "Score"] + selected_traits
-        ]
+def plot_radar(row, traits):
+    fig = go.Figure()
+    fig.add_trace(go.Scatterpolar(
+        r=[row[trait] for trait in traits],
+        theta=traits,
+        fill='toself',
+        name=row['Institution Name']
+    ))
+    fig.update_layout(
+        polar=dict(radialaxis=dict(visible=True, range=[0, 100])),
+        showlegend=False
     )
+    return fig
 
-# Display private institutions if 7 or more
-if len(private_df) >= 7:
-    st.subheader("Private Institutions")
-    st.dataframe(
-        private_df.sort_values(by="Score", ascending=False)[
-            ["Institution Name", "State abbreviation (HD2023)", "Score"] + selected_traits
-        ]
-    )
+st.title("Credential Traits Explorer")
 
-# If fewer than 7 in either category
-if len(public_df) < 7 and len(private_df) < 7:
-    st.info("Not enough institutions in each category to display separate lists.")
+with st.sidebar:
+    st.header("Select Trait Weights")
+    traits = [
+        "Conscientiousness", "Resilience/Grit", "Adaptability",
+        "Self Direction", "Growth Mindset", "Cognitive Readiness",
+        "Communication", "Quantitative Reasoning"
+    ]
+    weights = {trait: st.slider(trait, 0.0, 1.0, 0.0, 0.1) for trait in traits}
+    total_weight = sum(weights.values())
+    if total_weight == 0:
+        st.warning("Please assign weights to at least one trait.")
+    else:
+        weights = {trait: w / total_weight for trait, w in weights.items() if w > 0}
+
+    state_filter = st.selectbox("Filter by State", ["All"] + sorted(load_data()['State abbreviation (HD2023)'].dropna().unique()))
+    view_option = st.radio("View Options", ["Combined", "Split by Public/Private"])
+
+st.markdown("### Trait Descriptions")
+with st.expander("How are these traits calculated?"):
+    st.markdown("""
+    **Conscientiousness**: Based on adjusted graduation timelines, separating Pell and non-Pell pathways.
+    
+    **Resilience/Grit**: Captures longer graduation timelines, age diversity, GI Bill utilization, and transfer-in enrollment.
+
+    **Adaptability**: Measures participation in online/hybrid learning, transfer paths, GI Bill, and older learners.
+
+    **Self Direction**: Includes older learners, hybrid participation, and late graduations.
+
+    **Growth Mindset**: Includes hybrid learning and improved graduation rates over time.
+
+    **Cognitive Readiness**: Based on standardized test performance, adjusted for Pell population.
+
+    **Communication**: Includes SAT English score, timely graduation, and international student enrollment (adjusted by institution type).
+
+    **Quantitative Reasoning**: Based on SAT Math scores and ACT Math where available.
+    """)
+
+if total_weight > 0:
+    df = load_data()
+    df = filter_by_state(df, state_filter)
+    df = df.dropna(subset=weights.keys())
+    df_scored = score_institutions(df, weights)
+
+    pub_df = df_scored[df_scored["Control of institution (HD2023)"] == 1]
+    priv_df = df_scored[df_scored["Control of institution (HD2023)"].isin([2, 3])]
+
+    if view_option == "Split by Public/Private" and len(pub_df) >= 7 and len(priv_df) >= 7:
+        st.subheader("Top Public Institutions")
+        st.dataframe(pub_df[["Institution Name", "State abbreviation (HD2023)", "Score"]].reset_index(drop=True))
+
+        st.subheader("Top Private Institutions")
+        st.dataframe(priv_df[["Institution Name", "State abbreviation (HD2023)", "Score"]].reset_index(drop=True))
+    else:
+        st.subheader("Top Institutions")
+        st.dataframe(df_scored[["Institution Name", "State abbreviation (HD2023)", "Score"]].reset_index(drop=True))
+
+    selected_school = st.selectbox("Select an institution to view trait radar", df_scored["Institution Name"])
+    selected_row = df_scored[df_scored["Institution Name"] == selected_school].iloc[0]
+    radar_fig = plot_radar(selected_row, list(weights.keys()))
+    st.plotly_chart(radar_fig)
+
+    csv = df_scored.to_csv(index=False)
+    st.download_button("Download Results", csv, "institution_traits.csv", "text/csv")
+
 
