@@ -76,35 +76,39 @@ def score_institutions(df, weights, include_partial):
 # Score and sort
 if any(weight > 0 for weight in weights.values()):
     scored_df = score_institutions(df, weights, include_partial)
-    scored_df = scored_df.sort_values(by="Score (out of 100)", ascending=False).reset_index(drop=True)
 
-    # Column visibility toggles
-    selected_cols = ["Institution Name"]
-    if show_state:
-        selected_cols.append("State")
-    if show_score:
-        selected_cols.append("Score (out of 100)")
-    if show_notes:
-        selected_cols.append("Notes")
+    if not scored_df.empty:
+        scored_df = scored_df.sort_values(by="Score (out of 100)", ascending=False).reset_index(drop=True)
 
-    # Tooltips
-    st.dataframe(
-        scored_df[selected_cols],
-        column_config={
-            "Institution Name": st.column_config.TextColumn("Institution Name"),
-            "Score (out of 100)": st.column_config.NumberColumn("Score (out of 100)", help="Weighted average score out of 100."),
-            "Notes": st.column_config.TextColumn("Notes", help="Indicates missing traits used in the calculation."),
-            "State": st.column_config.TextColumn("State")
-        },
-        use_container_width=True
-    )
+        # Column visibility toggles
+        selected_cols = ["Institution Name"]
+        if show_state:
+            selected_cols.append("State")
+        if show_score:
+            selected_cols.append("Score (out of 100)")
+        if show_notes:
+            selected_cols.append("Notes")
 
-    # Download option
-    st.download_button(
-        label="Download Results as CSV",
-        data=scored_df.to_csv(index=False).encode('utf-8'),
-        file_name='trait_scores.csv',
-        mime='text/csv'
-    )
+        # Tooltips
+        st.dataframe(
+            scored_df[selected_cols],
+            column_config={
+                "Institution Name": st.column_config.TextColumn("Institution Name"),
+                "Score (out of 100)": st.column_config.NumberColumn("Score (out of 100)", help="Weighted average score out of 100."),
+                "Notes": st.column_config.TextColumn("Notes", help="Indicates missing traits used in the calculation."),
+                "State": st.column_config.TextColumn("State")
+            },
+            use_container_width=True
+        )
+
+        # Download option
+        st.download_button(
+            label="Download Results as CSV",
+            data=scored_df.to_csv(index=False).encode('utf-8'),
+            file_name='trait_scores.csv',
+            mime='text/csv'
+        )
+    else:
+        st.info("No institutions met the criteria with available data.")
 else:
     st.warning("Please assign weight to at least one trait in the sidebar.")
