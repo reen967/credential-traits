@@ -33,9 +33,10 @@ state_filter = st.selectbox("Filter by State", ["All"] + sorted(df['State abbrev
 show_state = st.checkbox("Show State", value=True)
 show_notes = st.checkbox("Show Notes (tooltips)", value=True)
 
-# Scoring function
 def score_institutions(df, weights, include_partial=True):
     results = []
+    max_score_possible = sum(weights.values()) * 100  # Since each trait is out of 100
+
     for _, row in df.iterrows():
         total_score = 0.0
         total_weight = 0.0
@@ -54,13 +55,13 @@ def score_institutions(df, weights, include_partial=True):
         if total_weight == 0 or (missing_traits and not include_partial):
             continue
 
-        final_score = round(total_score / total_weight, 1)
+        normalized_score = round((total_score / max_score_possible) * 100, 1)
 
         notes = "All traits used" if not missing_traits else f"Missing: {', '.join(missing_traits)}"
         results.append({
             "Institution Name": row["Institution Name"],
             "State": row["State abbreviation (HD2023)"],
-            "Score (out of 100)": final_score,
+            "Score (out of 100)": normalized_score,
             "Notes": notes
         })
 
