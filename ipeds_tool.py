@@ -2,101 +2,78 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 
-# Load the data
+# Load data
 @st.cache_data
 def load_data():
-    df = pd.read_csv("data/credential_traits.csv")
-    df.replace("Unavailable", pd.NA, inplace=True)  # Clean non-numeric entries
-    return df
+    return pd.read_csv("data/credential_traits.csv")
 
 df = load_data()
 
-# Trait columns
-trait_columns = [
+# Trait names and weighting input
+traits = [
     "Conscientiousness", "Resilience/Grit", "Adaptability", "Self Direction",
     "Growth Mindset", "Cognitive Readiness", "Communication", "Quantitative Reasoning"
 ]
 
-# Sidebar UI
 st.sidebar.header("Select Trait Weights")
-weights = {}
-for trait in trait_columns:
-    weights[trait] = st.sidebar.slider(trait, 0.0, 1.0, 0.0, 0.1)
+weights = {trait: st.sidebar.slider(trait, 0.0, 1.0, 0.0, 0.1) for trait in traits}
+include_partial = st.sidebar.checkbox("Include partial results", value=True)
+selected_state = st.sidebar.selectbox("Filter by State", ["All"] + sorted(df["State abbreviation (HD2023)"].dropna().unique()))
 
-# Filter by State
-state_filter = st.sidebar.selectbox("Filter by State", ["All"] + sorted(df['State abbreviation (HD2023)'].dropna().unique()))
-if state_filter != "All":
-    df = df[df['State abbreviation (HD2023)'] == state_filter]
+# Apply state filter
+if selected_state != "All":
+    df = df[df["State abbreviation (HD2023)"] == selected_state]
 
-# Function to calculate score and missing traits
+# Scoring logic
 def score_institutions(df, weights):
     results = []
     for _, row in df.iterrows():
-        available_traits = []
-        missing_traits = []
-        score = 0.0
-        total_weight = 0.0
-
+        score = 0
+        total_weight = 0
+        missing = []
         for trait, weight in weights.items():
-            val = row.get(trait)
-            if pd.notna(val):
-                available_traits.append(trait)
-                score += float(val) * weight
+            if weight == 0:
+                continue
+            try:
+                value = float(row[trait])
+                score += value * weight
                 total_weight += weight
-            else:
-                if weight > 0:
-                    missing_traits.append(trait)
-
-        if total_weight > 0:
-            normalized_score = round(score / total_weight, 1)
-        else:
-            normalized_score = "Unavailable"
-
-        notes = "Partial data" if missing_traits else "All traits used"
-        if missing_traits:
-            notes += f" (Missing: {', '.join(missing_traits)})"
-
-        results.append({
-            "Institution Name": row["Institution Name"],
-            "State": row["State abbreviation (HD2023)"],
-            "Control": row["Control of institution (HD2023)"],
-            "Score": normalized_score,
-            "Notes": notes
-        })
+            except:
+                missing.append(trait)
+        if total_weight > 0 and (include_partial or not missing):
+            results.append({
+                "Institution Name": row["Institution Name"],
+                "Control": row["Control of institution (HD2023)"],
+                "State": row["State abbreviation (HD2023)"],
+                "Match %": round(score / total_weight, 1),
+                "Missing": missing
+            })
     return pd.DataFrame(results)
 
-# Score and sort
 scored_df = score_institutions(df, weights)
-scored_df = scored_df[scored_df["Score"] != "Unavailable"]
-scored_df = scored_df.sort_values(by="Score", ascending=False)
+scored_df = scored_df.sort_values(by="Match %", ascending=False)
 
-# Split by control
-public = scored_df[scored_df["Control"] == 1]
-private = scored_df[scored_df["Control"].isin([2, 3])]
+# Auto-split if needed
+control_counts = scored_df["Control"].value_counts()
+split = any(control_counts[c] >= 7 for c in [1, 2, 3])
 
-# Display results
-st.title("Credential Traits by Institution")
-st.markdown("Use the sidebar to adjust trait weightings and filter results.")
+# UI display
+def render_table(df, label):
+    st.subheader(label)
+    for _, row in df.iterrows():
+        highlight = " 🔍" if row["Missing"] else ""
+        with st.expander(f"{row['Institution Name']} ({row['Match %']}%){highlight}"):
+            st.markdown(f"**State:** {row['State']}")
+            if row["Missing"]:
+                st.markdown(f"*Partial data — missing:* {', '.join(row['Missing'])}")
 
-if len(public) >= 7:
-    st.subheader("Top Public Institutions")
-    st.dataframe(public[["Institution Name", "State", "Score", "Notes"]])
-
-if len(private) >= 7:
-    st.subheader("Top Private Institutions")
-    st.dataframe(private[["Institution Name", "State", "Score", "Notes"]])
-
-if len(public) < 7 and len(private) < 7:
-    st.subheader("Top Institutions")
-    st.dataframe(scored_df[["Institution Name", "State", "Score", "Notes"]])
-
-# Optional: Download button
-st.download_button(
-    label="Download Results as CSV",
-    data=scored_df.to_csv(index=False).encode('utf-8'),
-    file_name='trait_scores.csv',
-    mime='text/csv'
-)
+if split:
+    if control_counts.get(1, 0) >= 7:
+        render_table(scored_df[scored_df["Control"] == 1], "Public Institutions")
+    if control_counts.get(2, 0) + control_counts.get(3, 0) >= 7:
+        render_table(scored_df[scored_df["Control"].isin([2, 3])], "Private Institutions")
+else:
+    render_table(scored_df, "All Institutions")
 
 
 
