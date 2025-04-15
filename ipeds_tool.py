@@ -4,7 +4,7 @@ import pandas as pd
 # Load the data
 @st.cache_data
 def load_data():
-    df = pd.read_csv("credential_traits.csv")
+    df = pd.read_csv("data/credential_traits.csv")
     df.replace("Unavailable", pd.NA, inplace=True)
     return df
 
