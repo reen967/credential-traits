@@ -2,100 +2,101 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 
+# Load the data
+@st.cache_data
 def load_data():
     df = pd.read_csv("data/credential_traits.csv")
+    df.replace("Unavailable", pd.NA, inplace=True)  # Clean non-numeric entries
     return df
 
-def filter_by_state(df, state):
-    if state != "All":
-        return df[df['State abbreviation (HD2023)'] == state]
-    return df
+df = load_data()
 
+# Trait columns
+trait_columns = [
+    "Conscientiousness", "Resilience/Grit", "Adaptability", "Self Direction",
+    "Growth Mindset", "Cognitive Readiness", "Communication", "Quantitative Reasoning"
+]
+
+# Sidebar UI
+st.sidebar.header("Select Trait Weights")
+weights = {}
+for trait in trait_columns:
+    weights[trait] = st.sidebar.slider(trait, 0.0, 1.0, 0.0, 0.1)
+
+# Filter by State
+state_filter = st.sidebar.selectbox("Filter by State", ["All"] + sorted(df['State abbreviation (HD2023)'].dropna().unique()))
+if state_filter != "All":
+    df = df[df['State abbreviation (HD2023)'] == state_filter]
+
+# Function to calculate score and missing traits
 def score_institutions(df, weights):
-    score = sum(df[trait] * weight for trait, weight in weights.items())
-    df = df.copy()
-    df["Score"] = score
-    df = df.dropna(subset=["Score"])
-    return df.sort_values("Score", ascending=False)
+    results = []
+    for _, row in df.iterrows():
+        available_traits = []
+        missing_traits = []
+        score = 0.0
+        total_weight = 0.0
 
-def plot_radar(row, traits):
-    fig = go.Figure()
-    fig.add_trace(go.Scatterpolar(
-        r=[row[trait] for trait in traits],
-        theta=traits,
-        fill='toself',
-        name=row['Institution Name']
-    ))
-    fig.update_layout(
-        polar=dict(radialaxis=dict(visible=True, range=[0, 100])),
-        showlegend=False
-    )
-    return fig
+        for trait, weight in weights.items():
+            val = row.get(trait)
+            if pd.notna(val):
+                available_traits.append(trait)
+                score += float(val) * weight
+                total_weight += weight
+            else:
+                if weight > 0:
+                    missing_traits.append(trait)
 
-st.title("Credential Traits Explorer")
+        if total_weight > 0:
+            normalized_score = round(score / total_weight, 1)
+        else:
+            normalized_score = "Unavailable"
 
-with st.sidebar:
-    st.header("Select Trait Weights")
-    traits = [
-        "Conscientiousness", "Resilience/Grit", "Adaptability",
-        "Self Direction", "Growth Mindset", "Cognitive Readiness",
-        "Communication", "Quantitative Reasoning"
-    ]
-    weights = {trait: st.slider(trait, 0.0, 1.0, 0.0, 0.1) for trait in traits}
-    total_weight = sum(weights.values())
-    if total_weight == 0:
-        st.warning("Please assign weights to at least one trait.")
-    else:
-        weights = {trait: w / total_weight for trait, w in weights.items() if w > 0}
+        notes = "Partial data" if missing_traits else "All traits used"
+        if missing_traits:
+            notes += f" (Missing: {', '.join(missing_traits)})"
 
-    state_filter = st.selectbox("Filter by State", ["All"] + sorted(load_data()['State abbreviation (HD2023)'].dropna().unique()))
-    view_option = st.radio("View Options", ["Combined", "Split by Public/Private"])
+        results.append({
+            "Institution Name": row["Institution Name"],
+            "State": row["State abbreviation (HD2023)"],
+            "Control": row["Control of institution (HD2023)"],
+            "Score": normalized_score,
+            "Notes": notes
+        })
+    return pd.DataFrame(results)
 
-st.markdown("### Trait Descriptions")
-with st.expander("How are these traits calculated?"):
-    st.markdown("""
-    **Conscientiousness**: Based on adjusted graduation timelines, separating Pell and non-Pell pathways.
-    
-    **Resilience/Grit**: Captures longer graduation timelines, age diversity, GI Bill utilization, and transfer-in enrollment.
+# Score and sort
+scored_df = score_institutions(df, weights)
+scored_df = scored_df[scored_df["Score"] != "Unavailable"]
+scored_df = scored_df.sort_values(by="Score", ascending=False)
 
-    **Adaptability**: Measures participation in online/hybrid learning, transfer paths, GI Bill, and older learners.
+# Split by control
+public = scored_df[scored_df["Control"] == 1]
+private = scored_df[scored_df["Control"].isin([2, 3])]
 
-    **Self Direction**: Includes older learners, hybrid participation, and late graduations.
+# Display results
+st.title("Credential Traits by Institution")
+st.markdown("Use the sidebar to adjust trait weightings and filter results.")
 
-    **Growth Mindset**: Includes hybrid learning and improved graduation rates over time.
+if len(public) >= 7:
+    st.subheader("Top Public Institutions")
+    st.dataframe(public[["Institution Name", "State", "Score", "Notes"]])
 
-    **Cognitive Readiness**: Based on standardized test performance, adjusted for Pell population.
+if len(private) >= 7:
+    st.subheader("Top Private Institutions")
+    st.dataframe(private[["Institution Name", "State", "Score", "Notes"]])
 
-    **Communication**: Includes SAT English score, timely graduation, and international student enrollment (adjusted by institution type).
+if len(public) < 7 and len(private) < 7:
+    st.subheader("Top Institutions")
+    st.dataframe(scored_df[["Institution Name", "State", "Score", "Notes"]])
 
-    **Quantitative Reasoning**: Based on SAT Math scores and ACT Math where available.
-    """)
+# Optional: Download button
+st.download_button(
+    label="Download Results as CSV",
+    data=scored_df.to_csv(index=False).encode('utf-8'),
+    file_name='trait_scores.csv',
+    mime='text/csv'
+)
 
-if total_weight > 0:
-    df = load_data()
-    df = filter_by_state(df, state_filter)
-    df = df.dropna(subset=weights.keys())
-    df_scored = score_institutions(df, weights)
-
-    pub_df = df_scored[df_scored["Control of institution (HD2023)"] == 1]
-    priv_df = df_scored[df_scored["Control of institution (HD2023)"].isin([2, 3])]
-
-    if view_option == "Split by Public/Private" and len(pub_df) >= 7 and len(priv_df) >= 7:
-        st.subheader("Top Public Institutions")
-        st.dataframe(pub_df[["Institution Name", "State abbreviation (HD2023)", "Score"]].reset_index(drop=True))
-
-        st.subheader("Top Private Institutions")
-        st.dataframe(priv_df[["Institution Name", "State abbreviation (HD2023)", "Score"]].reset_index(drop=True))
-    else:
-        st.subheader("Top Institutions")
-        st.dataframe(df_scored[["Institution Name", "State abbreviation (HD2023)", "Score"]].reset_index(drop=True))
-
-    selected_school = st.selectbox("Select an institution to view trait radar", df_scored["Institution Name"])
-    selected_row = df_scored[df_scored["Institution Name"] == selected_school].iloc[0]
-    radar_fig = plot_radar(selected_row, list(weights.keys()))
-    st.plotly_chart(radar_fig)
-
-    csv = df_scored.to_csv(index=False)
-    st.download_button("Download Results", csv, "institution_traits.csv", "text/csv")
 
 
