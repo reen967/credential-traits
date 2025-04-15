@@ -6,13 +6,13 @@ The Credential Trait Explorer is a tool designed for anyone who wants to explore
 
 The interface lets you:
 
-Choose which traits matter to you
+- Choose which traits matter to you
 
-Assign different weights to each trait
+- Assign different weights to each trait
 
-Filter by state
+- Filter by state
 
-View results in an interactive table (with options to reveal scores, notes, and state)
+- View results in an interactive table (with options to reveal scores, notes, and state)
 
 There’s also an accompanying reflective essay that dives deeper into the ideas behind the tool; why these traits were selected, the limits of inference, and what this means for how we evaluate candidates.
 
