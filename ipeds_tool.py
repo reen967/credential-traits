@@ -1,8 +1,7 @@
 import streamlit as st
 import pandas as pd
-import plotly.graph_objects as go
 
-# Load Data
+# Load data
 @st.cache_data
 def load_data():
     df = pd.read_csv("data/credential_traits.csv")
@@ -10,115 +9,98 @@ def load_data():
 
 df = load_data()
 
-st.title("Institution Trait Finder")
+# Title
+st.title("Institution Trait Filter Tool")
 
-# Filter by State
-state_filter = st.selectbox("Filter by State", ["All"] + sorted(df['State abbreviation (HD2023)'].dropna().unique()))
-if state_filter != "All":
-    df = df[df['State abbreviation (HD2023)'] == state_filter]
-
-# Trait Weight Inputs
-st.markdown("### Select Trait Weights")
-traits = [
+# Trait inputs
+st.markdown("### Select Traits and Assign Weights")
+trait_columns = [
     "Conscientiousness", "Resilience/Grit", "Adaptability", "Self Direction",
     "Growth Mindset", "Cognitive Readiness", "Communication", "Quantitative Reasoning"
 ]
 
 weights = {}
-for trait in traits:
-    weights[trait] = st.slider(trait, 0.0, 1.0, 0.0, 0.1)
+for trait in trait_columns:
+    weight = st.slider(f"{trait} Weight", min_value=0.0, max_value=1.0, step=0.1, value=0.0)
+    if weight > 0:
+        weights[trait] = weight
 
 # Normalize weights
-total_weight = sum(weights.values())
-if total_weight > 0:
-    weights = {k: v / total_weight for k, v in weights.items()}
-else:
-    weights = {k: 0 for k in weights}
+if weights:
+    total_weight = sum(weights.values())
+    weights = {trait: w / total_weight for trait, w in weights.items()}
 
-include_partial = st.toggle("Include partial results", value=True)
+# Column toggles
+st.markdown("### Display Options")
+col1, col2, col3 = st.columns(3)
+with col1:
+    show_score = st.checkbox("Show Score", value=False)
+with col2:
+    show_notes = st.checkbox("Show Missing Traits", value=False)
+with col3:
+    show_state = st.checkbox("Show State", value=False)
 
-# Columns visibility toggle
-show_score = st.checkbox("Show overall score", value=False)
-show_notes = st.checkbox("Show notes on missing data", value=False)
-show_state = st.checkbox("Show State", value=True)
+# State filter
+selected_state = st.selectbox("Filter by State", ["All"] + sorted(df['State abbreviation (HD2023)'].dropna().unique()))
+if selected_state != "All":
+    df = df[df['State abbreviation (HD2023)'] == selected_state]
 
-# Scoring Logic
-def score_institutions(df, weights, include_partial):
-    results = []
-    for _, row in df.iterrows():
-        available_traits = {
-            trait: float(row[trait]) if str(row[trait]).replace('.', '', 1).isdigit() else None
-            for trait in weights
-        }
-        valid_traits = {k: v for k, v in available_traits.items() if v is not None}
-        
-        if not valid_traits and not include_partial:
-            continue
+# Score institutions
+def score_institutions(df, weights):
+    scores = []
+    notes = []
+    for idx, row in df.iterrows():
+        score = 0
+        total_weight = 0
+        missing_traits = []
+        for trait, weight in weights.items():
+            value = row.get(trait)
+            if isinstance(value, (int, float)):
+                score += value * weight
+                total_weight += weight
+            else:
+                missing_traits.append(trait)
+        if total_weight > 0:
+            final_score = round(score / total_weight, 1)
+        else:
+            final_score = None
+        scores.append(final_score)
+        notes.append(", ".join(missing_traits) if missing_traits else "")
+    df["Score"] = scores
+    df["Missing Traits"] = notes
+    return df
 
-        applied_weights = {k: weights[k] for k in valid_traits}
-        total_trait_score = sum(valid_traits[k] * applied_weights[k] for k in valid_traits)
-        total_weight_used = sum(applied_weights.values())
+if weights:
+    df_scored = score_institutions(df.copy(), weights)
+    df_scored = df_scored[df_scored["Score"].notna()]
 
-        score = round(total_trait_score / total_weight_used, 1) if total_weight_used else None
-        missing = [k for k in weights if available_traits[k] is None and weights[k] > 0]
+    # Determine if we need to split by control
+    public_df = df_scored[df_scored["Control of institution (HD2023)"] == 1]
+    private_df = df_scored[df_scored["Control of institution (HD2023)"].isin([2, 3])]
+    show_split = len(public_df) >= 7 and len(private_df) >= 7
 
-        results.append({
-            "Institution Name": row["Institution Name"],
-            "Control": row["Control of institution (HD2023)"],
-            "State": row["State abbreviation (HD2023)"],
-            "Score": score,
-            "Missing Traits": ", ".join(missing) if missing else "",
-            **({trait: available_traits[trait] for trait in traits} if include_partial else {})
-        })
+    columns = ["Institution Name"]
+    if show_score:
+        columns.append("Score")
+    if show_notes:
+        columns.append("Missing Traits")
+    if show_state:
+        columns.append("State abbreviation (HD2023)")
 
-    return pd.DataFrame(results)
-
-# Generate scored results
-df_scored = score_institutions(df, weights, include_partial)
-
-# Handle institution type split
-if len(df_scored) >= 7:
-    public_df = df_scored[df_scored['Control'] == 1]
-    private_df = df_scored[df_scored['Control'].isin([2, 3])]
-
-    if len(public_df) >= 7 and len(private_df) >= 7:
+    if show_split:
         st.subheader("Public Institutions")
-        st.dataframe(
-    public_df[
-        [c for c in ["Institution Name"] +
-         (["Score"] if show_score else []) +
-         (["Missing Traits"] if show_notes else []) +
-         (["State"] if show_state else [])
-         if c in public_df.columns]
-    ].sort_values(by="Score", ascending=False, na_position='last')
-)
-
+        public_display = public_df[columns].sort_values(by="Score", ascending=False, na_position='last')
+        st.dataframe(public_display)
 
         st.subheader("Private Institutions")
-        st.dataframe(
-    private_df[
-        [c for c in ["Institution Name"] +
-         (["Score"] if show_score else []) +
-         (["Missing Traits"] if show_notes else []) +
-         (["State"] if show_state else [])
-         if c in private_df.columns]
-    ].sort_values(by="Score", ascending=False, na_position='last')
-)
+        private_display = private_df[columns].sort_values(by="Score", ascending=False, na_position='last')
+        st.dataframe(private_display)
 
-        st.subheader("All Institutions")
-        visible_columns = [c for c in ["Institution Name"] +
-                   (["Score"] if show_score else []) +
-                   (["Missing Traits"] if show_notes else []) +
-                   (["State"] if show_state else [])
-                   if c in df_scored.columns]
-
-st.dataframe(
-    df_scored[visible_columns].sort_values(by="Score", ascending=False, na_position='last')
-)
+    else:
+        st.subheader("Combined Results")
+        combined_display = df_scored[columns].sort_values(by="Score", ascending=False, na_position='last')
+        st.dataframe(combined_display)
 
 else:
-    st.subheader("All Institutions")
-    st.dataframe(df_scored[[c for c in ["Institution Name"] + (["Score"] if show_score else []) + (["Missing Traits"] if show_notes else []) + (["State"] if show_state else [])] if c in df_scored.columns]].sort_values(by="Score", ascending=False, na_position='last'))
-
-
+    st.info("Please select at least one trait with a weight greater than 0 to begin filtering.")
 
