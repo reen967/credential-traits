@@ -43,8 +43,6 @@ All calculations are available in the code and documented in plain English formu
 ## Data Source + Thanks
 All institutional data is drawn from the Integrated Postsecondary Education Data System (IPEDS), a publicly available dataset maintained by the National Center for Education Statistics (NCES). We're grateful for their work in making educational data transparent and accessible.
 
-Also thanks to ChatGPT for helping me think through this, including fixing formulas, writing the bulk of the code, and pointing out improvements in the accompanying essay.
-
 ## A Note
 This is not a ranking system. It’s a way of looking differently, and hopefully more generously, at what credentials might tell us, and what they often don’t.
 
